@@ -87,6 +87,8 @@ to be different compared to other land uses, yet more investigation in this dire
 ## References:
  
 Kashyap, P., &amp; Borongan, G. (2018). (rep.). Country Profile Viet Nam: 
-    Managing municipal solid waste and packaging waste. Bonn: Deutsche Gesellschaft für Internationale Zusammenarbeit (GIZ) GmbH. 
-Varon, D. J. et. al.(2021). High-frequency monitoring of anomalous methane 
-    point sources with multispectral Sentinel-2 satellite observations. Atmospheric Measurement Techniques, 14(4), 2771-2785.
+    Managing municipal solid waste and packaging waste. Bonn: Deutsche Gesellschaft für Internationale     
+    Zusammenarbeit (GIZ) GmbH. 
+    
+Varon, D. J. et. al.(2021). High-frequency monitoring of anomalous methane point sources with multispectral 
+    Sentinel-2 satellite observations. Atmospheric Measurement Techniques, 14(4), 2771-2785.
