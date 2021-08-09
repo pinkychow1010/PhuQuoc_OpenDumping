@@ -1,0 +1,1306 @@
+// ==================================================================================================================
+// 
+// Date: 20th July, 2021
+// Author: Ka Hei Pinky, Chow
+// Affiliation: Julius-Maximilians-Universität Würzburg (JMU)
+// License: This work is licensed under a Creative Commons Attribution-NonCommercial 4.0 International License.
+//          https://creativecommons.org/licenses/by-nc/4.0/
+// Contact: pinkychow1010@gmail.com, https://www.linkedin.com/in/ka-hei-chow-231345188/
+// Acknowledgments: Google Earth Engine Team, Google Earth Engine Developers group
+//
+// ==================================================================================================================
+//
+// ####################################################################
+// ##   Conservation Science Project SS 2021:                        ##
+// ##                                                                ##
+// ##   Classification of Open Dumping Sites and                     ##
+// ##   Analysis of Methane Emissoin on Phu Quoc Island, Vietnam     ##
+// ####################################################################
+// 
+// >>> Objective:
+// 
+// This Google Earth Engine script aims to detect open dumping sites on Phu Quoc Island, Vietnam to analysis 
+// their methane emission and potential leaching impacts.
+//
+// >>> Research Questions:
+//
+// 1) Can open dumping sites on Phu Quoc can be detected using optical remote sensing data such as Sentinel 2?
+// 2) What are the temporal patterns of methane emission from the open dumping sites on Phu Quoc?
+//
+// >>> Workflow:
+// 
+// This script have fulfilled several task: First, it use the ground truth data to detect dumping sites
+// after visual inspection and preprocessing of the data. The classification is two-fold:
+// First, it use the spectral bands, as well as Tasseled Cap Analysis to classify different land use surface, with barren land assigned 
+// as potential sites for illegal dumping. Secondly, the barren land is further processed with another
+// binary classification into dumping sites and non-dumping sites. Instead of spectral bands, it uses 
+// indices such as NDVI, methane proxy and land surface temperature which is revealed as useful indices
+// in the existig literature. The methane proxy can be divided into Multi-band–single-pass (MBSP) retrieval
+// and adapted Single-band–multi-pass (SBMP) retrieval, which are proposaled in recent literature to 
+// estimate methane emission using band 11 and 12 of the Sentinel-2 data. Both results are compared.
+// Finally, a time series analysis of methane proxy at the dumping sits is implemented, to investigate
+// the temporal patterns of methane emission compared to other land use class.
+//
+// >>> Results:
+// 
+// The classification of land use in the first step have achieved overall 98.5% accuracy, yet this
+// exceptionally high value are owing to the dominant sample from the forest and water class. 
+// The accuracy for each land use class are all fairly satistfactory, ranging from 71.1% to 99.9%,
+// with lowest classification accuracy for the barren land, due to the confision with the forest/ vegetation class.
+// 
+// As the spectral signature between barren land and dumping sites are highly similar, the second fold
+// classification cannot achieved a satistfactory results, as the values of the proxies from the training
+// sample are highly heterogenous. This might duw to a different nature of the landfill, such as for construction
+// waste or for organic waste. The dumping sites either has higher LST or lower LST than the barren land,
+// the same is for the methane proxy. Secondly, the training sample of the dumping sites are very limited in 
+// in the data point of view, with 5 polygons with limited size. It added up the difficulty for high accuracy.
+// From the results, both the highest LST and methane proxy coming from the barren land rather than the 
+// dumping sites. However, the temporal patterns of methane emission from barren land and dumping sites seem
+// to be different compared to other land uses, yet more investigation in this direction is needed. 
+//
+// >>> Output:
+// 
+// 1) A model for two-fold land use classification and detection of open dumping sites
+// 2) Accuracy assessment for land use classification
+// 3) Calculation of methane proxies and land surface temperature at the potential dumpings sites
+// 4) Object-based potential dumpsites filtering based on object size
+// 5) Google Earth App User Interface for the classification results
+// 
+// >>> Applications:
+// 
+// 1) Using Sentinel-2 to map methane emission at a much higher resolution (10m x 10m) compared to Sentinel-5P (5.5 km x 3.5 km)
+//    which is also unavailable in this area.
+// 2) Hierarchical classification to enhance accuracy for detecting barren land and potential dumping sites (Overall Classification Accuracy 98.5%).
+// 
+// >>> Limitations:
+// 
+// 1) Confusion between barren land, sandy arreas, harvasted agricultural field, construction sites and open dumping sites
+// 2) Limited accuracy for mixed pixels
+// 3) Influences from methane emission at wetlands
+// 4) Uncertainty of methane proxies
+// 5) Training data hardly transferable to other dumping sites compared to other land use class, possibly due to heterogenity of the class
+//    For example, open dumping ground in Mumbai, India cannot be trained for existing dumping ground on Phu Quoc Island,
+//    although all other land use classes can be easily transfered (eg, forest, water).
+// 6) Limited training data available compared to other land cover class
+// 
+// >>> Conclusion:
+//     
+//  1) Two-layered hierarchical classification, land use classification followed by binary classification has offered 
+//     high potential to enhance detection of dumping sites compared to single classification.
+//  2) Dumping sites do not display homogenous LST / methane proxy patterns to be distinguished from barren land.
+//  3) Transferring dumping sites from other regions has not noticeably enhance the detection accuracy.
+//  4) Methane proxy at dumping sites are remarkably lower than at the construction sites but higher than other barren land.
+//  5) Adapted SBMP, compared to MBSP or LST, has shown a better potential in dumping site detection.
+// 
+// >>> Future Effort Needed:
+// 
+// 1) Investigate impacts of urban areas on methane proxy
+// 2) Study on temporal patterns of methane emission at the dumping sites
+// 3) Model for obtaining absolute methane emission quantity from the proxy values
+// 4) Study on spectral characteristics of dumping sites' heterogenity (eg. organic waste versus construction waste)
+// 5) Develop pre-trianed model covering heterogenous open dumping ground of all types
+//
+// >>> References:
+// 
+// Kashyap, P., &amp; Borongan, G. (2018). (rep.). Country Profile Viet Nam: 
+//     Managing municipal solid waste and packaging waste. Bonn: Deutsche Gesellschaft für Internationale Zusammenarbeit (GIZ) GmbH. 
+// Varon, D. J. et. al.(2021). High-frequency monitoring of anomalous methane 
+//     point sources with multispectral Sentinel-2 satellite observations. Atmospheric Measurement Techniques, 14(4), 2771-2785.
+//
+//##############################################################################################
+
+// *** NOTE: This script might take up to several minutes to load all the layers and might cause temporary
+// unresponse of the browser.
+
+//##########################################
+//                                        //
+//   DATA ACQUISITION & PRE-PROCESSING    //
+//                                        //
+//##########################################
+
+// Check the Region of Interest (roi)
+// First, we can check the coordinates of roi, which is defined in the geometry imports
+print((roi.coordinates().get(0)));
+
+// Ground Truth
+// The field open dumping sites data area given by local staff from WWF as several polygons,
+// the shapefile are imported with the path to Google asset. Land cover parameter is set to 5.
+var groundData = ee.FeatureCollection("projects/ee-pinkychow1010/assets/dumpsite").set('landcover', 4);
+//print(groundData);
+
+  // Get landcover properties
+  // check if the set property of landcover is working
+var val = groundData.get('landcover');
+print(val,"Dumpsite land cover value");
+
+//#### Water Mask (For masking out ocean) ####
+// To reduce computing power for ocean area, a mask is introduced from the existing dataset.
+
+  // Load the Hansen et al. forest change dataset which includes a surface water mask.
+var hansenImage = ee.Image('UMD/hansen/global_forest_change_2015');
+
+  // Select the land/water mask.
+var datamask = hansenImage.select('datamask');
+
+  // Create a binary mask.
+var mask = datamask.eq(1);
+
+//########################
+//#### Landsat 8 LST #####
+//########################
+
+// In this project, most of the data come from Sentinel-2. 
+// Yet, the thermal band from Landsat 8 will be included for classification,
+// since Land Surface Temperature (LST) might provide useful information about open dumoping sites.
+
+  // Define Date Range for Analysis
+var startYear = 2019;
+var endYear = 2020;
+
+  // Create a list of years by generating a sequence between 2019 and 2020
+var years = ee.List.sequence(startYear, endYear);
+
+  // Acquire Landsat 8 data, filter cloudy data, and get thermal band.
+var dataset = ee.ImageCollection("LANDSAT/LC08/C01/T1_TOA")
+                  .filterMetadata('CLOUD_COVER', 'less_than', 20)
+                  .sort('CLOUD_COVER',false)
+                  .select(['B10']);
+
+  // As LST is assumed to be rather static/constant during the year,
+  // so the data is composite to annual mosaics to improve the data quality.
+  // Generate annual mosaics compositres
+var annual = ee.ImageCollection.fromImages(
+  years.map(function (year) {
+    var startDate = ee.Date.fromYMD(year, 1, 1);
+    var endDate = ee.Date.fromYMD(ee.Number(year).add(1), 12, 31);
+    var annual = dataset
+      .filterDate(startDate, endDate)
+      .median();
+    return annual
+      .set('year', year)
+      .set('system:time_start', ee.Date.fromYMD(year, 1, 1).format("YYYY_MM_dd"));
+}));
+
+  //Clip LST annual mosaic to our roi                 
+annual = annual.map(function(image) { return image.clip(roi); });
+
+//#### Display Landsat 8 LST ####
+
+  //Visualization parameters
+var Vis = {
+  min: 296,
+  max: 299,
+  palette: ['ffffff','ffc63a','ff0051','33270b'],
+  opacity: 0.6
+};
+
+  //Preview map options
+Map.centerObject(site,14); //centre to the dumping sites
+Map.setOptions('SATELLITE'); //use satellite basemap
+
+  // Display Thermal Band
+Map.addLayer(annual.first().updateMask(mask), Vis, 'L8_thermal'); // display LST data with ocean masked out
+
+//####################
+//#### Sentinel-2 ####
+//####################
+
+// Sentinel-2 data will also be imported, calculated the annual average
+// for classification and methane proxy calculation.
+
+  //  Get image collection, filter date range and cloudy data
+var s2 = ee.ImageCollection('COPERNICUS/S2_SR')
+                  .filterDate('2019-01-01', '2020-01-01')
+                  .filterBounds(roi)
+                  // Pre-filter to get less cloudy granules.
+                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',20))
+                  .select(['B2','B3','B4','B5','B6','B7','B8','B8A','B9','B11','B12']);
+
+//#######################
+//#### Methane Proxy ####
+//#######################
+
+// Band 11 and 12 will be used to estimate methance proxy. Two methods will be used
+// according to the a recent reference literature:
+//
+// Varon, D. J. et. al.(2021). High-frequency monitoring of anomalous methane 
+//    point sources with multispectral Sentinel-2 satellite observations. 
+//    Atmospheric Measurement Techniques, 14(4), 2771-2785.
+//
+// 1) Multi-band–single-pass (MBSP) retrieval
+//    MBSP = (c*B12 - B11)/B11, 
+//    where c is determined by least-square fitting of R12 against R11.
+//
+// 2) adapted Single-band–multi-pass (SBMP) retrieval
+//    (c*B12 - B'12)/B'12, where c is a tuning scaling factor,
+//    and B'12 is collected from a reference point without methane emission.
+//    It will be taken from a forest area far away from wetland 
+//    assuming methane emission there is neglectable.
+
+  // Visualization parameters for Sentinel-2 Data                  
+var s2_vis = {
+  min: 2000,
+  max: 4000,
+  palette: ['343A40','7952B3','FFC107','E1E8EB'],
+  opacity: 0.6
+};
+
+//#### Display Sentinel-2 ####
+// As band 11 and 12 will be used for methane proxy, some visual inspection is conducted before the calculation.
+Map.addLayer(s2.select(['B11']).mean().updateMask(mask), s2_vis, 'S2_band11');
+Map.addLayer(s2.select(['B12']).mean().updateMask(mask), s2_vis, 'S2_band12');
+
+//#####################
+//###### 1. MBSP ######
+//#####################
+
+// Compute coefficient 'c' for ch4 proxy: Linear Regression
+
+// Subset band 11 and 12. In the regression reducer, independent
+// variables come first followed by the dependent variables. In this case,
+// B11 (along x-axis) is the independent variable and B12 (along y-axis) is the dependent
+// variable.
+
+var s2_mean = s2.mean(); // average spectral value of Sentinel 2 for the last 18 months
+var imgRegress = s2_mean.select(['B11', 'B12']); // choose bands for linear regression
+
+// ###########################
+// #### LINEAR REGRESSION ####
+// ###########################
+
+// Calculate regression coefficients for the set of pixels intersecting the
+// above defined region using reduceRegion with ee.Reducer.linearFit().
+var linearFit = imgRegress.reduceRegion({
+  reducer: ee.Reducer.linearFit(),
+  geometry: roi,
+  maxPixels: 1e8, // prevent memory error
+  bestEffort: true, // prevent memory error
+  scale: 30,
+});
+
+// Inspect the results.
+print('OLS estimates:', linearFit); // Ordinary Least Squares
+print('y-intercept:', linearFit.get('offset')); // y-intercept
+print('Slope:', linearFit.get('scale')); // Slope
+
+  // Compute index using S2 data for methane emission
+var b11 = s2.select(['B11']).mean();
+var b12 = s2.select(['B12']).mean();
+
+ // Insert the formula for calculating MBSP
+var MBSP = b12.multiply(ee.Number(linearFit.get('offset'))).subtract(b11).divide(b11).rename('MBSP');
+
+  // Display MBSP result
+var ch4_vis = {min: 70, max: 120, palette: ['343A40','7952B3','FFC107','E1E8EB']};
+Map.addLayer(MBSP.updateMask(mask), ch4_vis, 'methane_proxy_MBSP');
+
+//#####################
+//###### 2. SBMP ######
+//#####################
+
+// Manually select a reference value from the forest with assumption that methane emission there is neglectable.
+var b12_ref = 1120.7647;
+
+ // Insert the formula for calculating SBMP
+var SBMP = ee.Image((b12.subtract(b12_ref)).divide(b12_ref).rename('SBMP'));
+
+//########################################
+//                                      //
+//        TASSELED CAP ANALYSIS         //
+//                                      //
+//########################################
+//
+// Apart from the spectral values, other indices are also used for supervised classification to increase performane,
+// including tasseled cap, including brightness, greenness and wetness, as well as the standard deviation of brightness
+// which is mentioned in literature as an useful proxy for open dumping sites.
+
+// Define a function for brightness
+function brightness(image) { //define function
+  var tc_bright = image.expression( //parses a text representation of a math operation
+    "BLUE * 0.3029 + GREEN * 0.2786 + RED * 0.4733 + NIR * 0.5599 + SWIR1 * 0.508 + SWIR2 * 0.1872",//equation
+    {
+    BLUE: image.select("B2"), //define variables in a dict
+    GREEN: image.select("B3"),
+    RED: image.select("B4"),
+    NIR: image.select("B8"),
+    SWIR1: image.select("B11"),
+    SWIR2: image.select("B12"),
+    });
+  return tc_bright.rename('Brightness').float();
+}
+
+
+// Define a function for greenness
+function greenness(image) {
+  var tc_green = image.expression(
+    "BLUE * (-0.2941) + GREEN * (-0.243) + RED * (-0.5424) + NIR * 0.7276 + SWIR1 * 0.0713 + SWIR2 * (-0.1608)",
+    {
+    BLUE: image.select("B2"), //define variables in a dict
+    GREEN: image.select("B3"),
+    RED: image.select("B4"),
+    NIR: image.select("B8"),
+    SWIR1: image.select("B11"),
+    SWIR2: image.select("B12"),
+    });
+  return tc_green.rename('Greenness').float();
+}
+
+
+// Define a function for wetness
+function wetness(image) {
+  var tc_wet = image.expression(
+    "BLUE * 0.1511 + GREEN * 0.1973 + RED * 0.3283 + NIR * 0.3407 + SWIR1 * (-0.7117) + SWIR2 * (-0.4559)",
+    {
+    BLUE: image.select("B2"), //define variables in a dict
+    GREEN: image.select("B3"),
+    RED: image.select("B4"),
+    NIR: image.select("B8"),
+    SWIR1: image.select("B11"),
+    SWIR2: image.select("B12"),
+    });
+  return tc_wet.rename('Wetness');
+}
+
+
+// Add TC bands to Sentinel-2 scene
+var img_tc = s2_mean.addBands(brightness(s2_mean) //stack more bands into image collection
+                      .addBands(greenness(s2_mean))
+                      .addBands(wetness(s2_mean)));
+
+print("TasseledCap", img_tc);
+//Map.addLayer(img_tc, {bands: ['Brightness', 'Greenness', 'Wetness'], min:0, max: 1500}, 'TC');
+Map.addLayer(brightness(s2_mean).updateMask(mask), {min:5000, max: 10000}, 'TC');
+
+// Brightness SD
+var brightness_sd = brightness(s2_mean).reduceNeighborhood({
+  reducer: ee.Reducer.stdDev(),
+  kernel: ee.Kernel.circle(10),
+});
+
+// Display the results.
+Map.addLayer(brightness_sd, {min: 500, max: 4000, palette: ['343A40','7952B3','FFC107','E1E8EB']}, 'SD of CH4');
+Map.addLayer(brightness(s2_mean).updateMask(mask), {min:5000, max: 10000}, 'TC_SD');
+
+//########################################
+//                                      //
+//          VEGETATION INDICES          //
+//                                      //
+//########################################
+//
+// Instead of implementation classification only using the original bands, 
+// NDVI, LSWI, methane proxies and LST data will also be included in a stack to enhance
+// classification performance.
+  
+  // Compute NDVI in different seasons for supervised classification 
+  // to distinguish harvested field and barren land by considering time series data
+  
+  // Compute NDVI 
+  // Annual average, minimum and maximum
+var NDVI_mean = s2.mean().normalizedDifference(['B8', 'B4']).rename('NDVI_mean');
+var NDVI_max = s2.max().normalizedDifference(['B8', 'B4']).rename('NDVI_max');
+var NDVI_min = s2.min().normalizedDifference(['B8', 'B4']).rename('NDVI_min');
+Map.addLayer(NDVI_mean.updateMask(mask), {min: 0, max: 0.7, palette: ['aad688','98c377','8bbd78','5ea758','47894b']}, 'NDVI');
+ 
+  // Seasonal Average
+var NDVI_winter = s2.filterDate('2019-01-01', '2020-02-28').mean().normalizedDifference(['B8', 'B4']).rename('NDVI_winter');
+var NDVI_spring = s2.filterDate('2019-03-01', '2020-05-31').mean().normalizedDifference(['B8', 'B4']).rename('NDVI_spring');
+var NDVI_summer = s2.filterDate('2019-06-01', '2020-08-31').mean().normalizedDifference(['B8', 'B4']).rename('NDVI_summer');
+var NDVI_fall = s2.filterDate('2019-09-01', '2020-12-31').mean().normalizedDifference(['B8', 'B4']).rename('NDVI_fall');
+
+  // Comute LSWI annual average
+var LSWI = s2_mean.normalizedDifference(['B8', 'B11']).rename('LSWI');
+Map.addLayer(LSWI.updateMask(mask), {min: -0.5, max: 0.3, palette: ['ffffff','b2b2ff','6666ff','0000ff']}, 'LSWI');
+
+//########################################
+//                                      //
+//        HISTOGRAM INSPECTION          //
+//                                      //
+//########################################
+
+//#### Combine all Bands ####
+
+  // Add LST data
+var LST = annual.first().select('B10').clip(roi).reduce(ee.Reducer.median()).rename('LST');
+
+// Stacking all information
+var stack = s2_mean.addBands(NDVI_mean) //stack bands into image collection
+                      .addBands(NDVI_min)
+                      .addBands(NDVI_max)
+                      .addBands(NDVI_winter)
+                      .addBands(NDVI_spring)
+                      .addBands(NDVI_summer)
+                      .addBands(NDVI_fall)
+                      .addBands(LSWI)
+                      .addBands(MBSP)
+                      .addBands(SBMP)
+                      .addBands(brightness(s2_mean))
+                      .addBands(greenness(s2_mean))
+                      .addBands(wetness(s2_mean))
+                      .addBands(brightness_sd)
+                      .addBands(LST);
+print(stack,"stack");
+
+// ##################################################
+// ######## SPECTRAL SIGNATURE INSPECTION ###########
+// ##################################################
+
+// Add true-clour composite to map
+Map.addLayer(s2_mean, {bands: ['B4', 'B3', 'B2'],min:0, max: 3000}, 'True colour image');
+
+// Define a function for plotting spectral signature
+var spectralSignature = function(feature, title, color) {
+  // Input parameters:
+  // feature: Geometry; Land use class feature
+  // title: String, Title for the plot
+  // color: String; Line color
+  var image = ee.Image(ee.ImageCollection('COPERNICUS/S2_SR')
+                  .filterDate('2019-01-01', '2020-01-01')
+                  .filterBounds(feature)
+                  .sort('CLOUD_COVER')
+                  .first()); // Get image with least cloud cover
+  
+  //Choose bands to include and define feature collection to use
+  var subset = image.select('B1','B2', 'B3', 'B4', 'B5', 'B6', 'B7','B8');
+  var samples = ee.FeatureCollection([feature]);
+  
+    // Define customization options.
+  var plotOptions = {
+    title: title,
+    hAxis: {title: 'Wavelength (nanometers)',viewWindow: {min: 443.9, max: 835.1}},
+    vAxis: {title: 'Reflectance',viewWindow: {min: 700, max: 2800}},
+    lineWidth: 1,
+    pointSize: 4,
+    series: {
+      0: {color: color}
+  }};
+  
+  // Define wavelengths for X-axis labels.
+  var wavelengths = [443.9,496.6,560,664.5,703.9,740.2,782.5,835.1];
+  // Create the chart and set options.
+  var Chart = ui.Chart.image.regions(
+      subset, samples, ee.Reducer.mean(), 10, 'label', wavelengths)
+          .setChartType('ScatterChart')
+          .setOptions(plotOptions);
+          
+  // Display the chart.
+  return Chart;
+};
+  
+// Spectral Signature for Urban Areas
+var urban_spectra = spectralSignature(urban_geometry,"Spectral Signature: Urban","red");                
+print(urban_spectra);
+
+// Spectral Signature for Barren Land
+var barren_spectra = spectralSignature(barren_geometry,"Spectral Signature: Barren","orange");                
+print(barren_spectra);
+
+// Spectral Signature for Dumping Sites
+var dumpsite_spectra = spectralSignature(dumpsite_geometry,"Spectral Signature: Dumpsite","blue");                
+print(dumpsite_spectra);
+
+
+// ##################################################
+// ############ HISTOGRAM CHART FUNCTION ############
+// ##################################################
+//
+// In order to understanding the spectral characteristics of open dumping sites, histograms are plotted 
+// for visual inspection, particularly to find out how well can open dumping sites can be separated from 
+// barren land, which is already an expected issue/ challenges for the detection. Visually, dumping sites 
+// cannot be well distinguished from barren land or construction sites in the Google imagery.
+
+// Function Definition
+
+// Calculate a histogram using a region reduction with the
+// `autoHistogram()` reducer. 
+
+var histogramForPolygon = function(stack, geometry, bands, title, xlabel, ylabel, color) { 
+// Input parameters:
+// stack: ee.Image; Image input
+// geometry: geometry; An area defining the region of interest for calculation
+// bands: String; Name of the single band for histogram plotting
+// title: String; The title of the histogram figure
+// xlabel: String; X label of the output figure
+// ylabel: String; Y label of the output figure
+// color: Fill color of the histogram
+  if (xlabel === undefined || xlabel === null){var xlabel = 'Value'} // set up default value, the warning can be ignored
+  if (ylabel === undefined || ylabel === null){var ylabel = 'Pixel Frequency'}
+  if (color === undefined || color === null){var color = '1d6b99'}
+  var hist = stack.reduceRegion({
+    reducer: ee.Reducer.autoHistogram(), // reducer for histogram
+    geometry: geometry,
+    scale: 10,
+    tileScale: 4, // prevent memory error
+    maxPixels: 1e8, // prevent memory error
+    bestEffort: true, // prevent memory error
+  });
+  
+  // ####################################
+  // ### HISTOGRAM CHART USING ARRAYS ###
+  // ####################################
+  
+  // The result of the region reduction by `autoHistogram` is an array. Get the
+  // array and cast it as such for good measure.
+  var histArray = ee.Array(hist.get(bands));
+  
+  // Subset the values that represent the bottom of the bins and project to
+  // a single dimension. Result is a 1-D array.
+  var binBottom = histArray.slice(1, 0, 1).project([0]);
+  
+  // Subset the values that represent the number of pixels per bin and project to
+  // a single dimension. Result is a 1-D array.
+  var nPixels = histArray.slice(1, 1, null).project([0]);
+  
+  // Layout options
+  var options = {
+    title: title,
+    hAxis: {title: xlabel},
+    vAxis: {title: ylabel},
+    colors: [color]
+  };
+  
+  // Chart the two arrays using the `ui.Chart.array.values` function.
+  var histColumnFromArray = ui.Chart.array.values({
+    array:nPixels,
+    axis: 0,
+    xLabels: binBottom})
+    .setChartType('ColumnChart')
+    .setOptions(options);
+    
+  return histColumnFromArray; // return figure
+  
+};
+
+//############################################
+//########## APPLY HISTOGRAM FUNCTION ########
+//############################################
+
+//#### 1) MBSP ####
+// Histogram for MBSP at the dumping sites
+var MBSP_hist = histogramForPolygon(stack, groundData, 'MBSP', 'MBSP for Open Dumping Sites');
+print(MBSP_hist,"MBSP histogram");
+
+// Histogram for MBSP at the barren land
+var MBSP_barren = histogramForPolygon(stack, barren, 'MBSP', 'MBSP for Barren');
+print(MBSP_barren,"MBSP histogram");
+// It can be seen from the histograms that, the distribution of two landuse class highly overlapped
+
+//#### 2) SBMP ####
+// Histogram for SBMP, another methane proxy at the dumping sites
+var SBMP_hist = histogramForPolygon(stack, groundData, 'SBMP', 'SBMP for Open Dumping Sites', null, null, 'ff3333');
+print(SBMP_hist,"SBMP histogram");
+
+// Histogram for SBMP at the barren land
+var SBMP_barren = histogramForPolygon(stack, barren, 'SBMP', 'SBMP for Barren', null, null, 'ff3333');
+print(SBMP_barren,"SBMP histogram");
+
+//#### 3) LST ####
+// Histogram for LST at the dumping sites
+var LST_hist = histogramForPolygon(stack, groundData, 'LST', 'LST for Open Dumping Sites', null, null, '00e64d');
+print(LST_hist,"LST histogram");
+
+// Histogram for LST at the barren land
+var LST_barren = histogramForPolygon(stack, barren, 'LST', 'LST for Barren', null, null, '00e64d');
+print(LST_barren,"LST histogram");
+
+//########################################
+//                                      //
+//     SUPERVISED CLASSIFICATION        //
+//                                      //
+//########################################
+//
+// As it is expected the spectral signature of poen dumping sites are relatively similar to barren land,
+// in order to improve classification accuracy of the model. The supervised classification oprocess
+// will be two folded. First, barren land and dumping sites will be grouped in the same class to identify
+// potential dumping sites. After the first classification, ch4 proxy will be used as additional training data 
+// and another binary classification will be implemented to distinguish dumping sites from non-dumping sites.
+
+var newluc_1 = water.merge(urban).merge(forest).merge(barren).merge(field)
+.merge(groundData).merge(sparse_veg); //.merge(openDumpsites)
+
+print(newluc_1, 'mergedClass');
+
+  // Select the bands for training
+var bands = [
+  'B2', 'B3', 'B4', 'B5', 'B6', 'B7','B8','B11','B12','NDVI_mean','LSWI',
+  'NDVI_winter','NDVI_spring','NDVI_summer','NDVI_fall','NDVI_max','NDVI_min',
+  'Brightness', 'Greenness', 'Wetness'
+  ];
+
+//#################################
+//##### First Classification ######
+//#################################
+//
+// In the first classification, LST, as well as methane proxy data are not used as land cover is the main focused 
+// rahter than the semantic characters of dumping sites. Open dumping sites are assigned as a subset of barren land
+// as they are spectrally very similar.
+
+// ####################################################
+// ####### K-fold Calssification & Validation #########
+// ####################################################
+//
+// K-fold validation is used to obtain more representative accuracies. In K-fold vlaidation,
+// data are split into training and testing with iteration k.
+
+// Sample the input imagery to get a FeatureCollection of training data.
+
+var training = stack.sampleRegions({ // Obtain training data from the land cover features from the polygons in the geometry imports
+  collection: newluc_1,
+  properties: ['landcover'],
+  scale: 30
+});
+
+// Assign random numbers for the training data
+var withRandom = training.randomColumn('random');
+
+// Divide training data into 5 folds
+var fold1 = withRandom.filter(ee.Filter.lt('random',0.2));
+var fold2 = withRandom.filter(ee.Filter.lt('random',0.4)).filter(ee.Filter.gt('random',0.2));
+var fold3 = withRandom.filter(ee.Filter.lt('random',0.6)).filter(ee.Filter.gt('random',0.4));
+var fold4 = withRandom.filter(ee.Filter.lt('random',0.8)).filter(ee.Filter.gt('random',0.6));
+var fold5 = withRandom.filter(ee.Filter.gt('random',0.8));
+
+// Check foldsizes
+var fold1Size = fold1.size();
+var fold2Size = fold2.size();
+var fold3Size = fold3.size();
+var fold4Size = fold4.size();
+var fold5Size = fold5.size();
+
+// Print the values
+print(fold1Size,'5-fold validation: fold size 1');
+print(fold2Size,'.. fold size 2');
+print(fold3Size,'.. fold size 3');
+print(fold4Size,'.. fold size 4');
+print(fold5Size,'.. fold size 5');
+
+// Merge the folds for supervised classification
+var mergeFold1 = fold2.merge(fold3).merge(fold4).merge(fold5);
+var mergeFold2 = fold1.merge(fold3).merge(fold4).merge(fold5);
+var mergeFold3 = fold2.merge(fold1).merge(fold4).merge(fold5);
+var mergeFold4 = fold2.merge(fold3).merge(fold1).merge(fold5);
+var mergeFold5 = fold2.merge(fold3).merge(fold4).merge(fold1);
+
+// Set up training classifiers and calculate accuracy
+var trainingClassifier1 = ee.Classifier.smileRandomForest(30).train(mergeFold1, 'landcover', bands);
+var validation1 = fold1.classify(trainingClassifier1);
+var errorMatrix1 = validation1.errorMatrix('landcover', 'classification');
+var accuracy1=errorMatrix1.accuracy();
+
+var trainingClassifier2 = ee.Classifier.smileRandomForest(30).train(mergeFold2, 'landcover', bands);
+var validation2 = fold2.classify(trainingClassifier2);
+var errorMatrix2 = validation2.errorMatrix('landcover', 'classification');
+var accuracy2=errorMatrix2.accuracy();
+
+var trainingClassifier3 = ee.Classifier.smileRandomForest(30).train(mergeFold3, 'landcover', bands);
+var validation3 = fold3.classify(trainingClassifier3);
+var errorMatrix3 = validation3.errorMatrix('landcover', 'classification');
+var accuracy3=errorMatrix3.accuracy();
+
+var trainingClassifier4 = ee.Classifier.smileRandomForest(30).train(mergeFold4, 'landcover', bands);
+var validation4 = fold4.classify(trainingClassifier4);
+var errorMatrix4 = validation4.errorMatrix('landcover', 'classification');
+var accuracy4=errorMatrix4.accuracy();
+
+var trainingClassifier5 = ee.Classifier.smileRandomForest(30).train(mergeFold5, 'landcover', bands);
+var validation5 = fold5.classify(trainingClassifier5);
+var errorMatrix5 = validation5.errorMatrix('landcover', 'classification');
+var accuracy5=errorMatrix5.accuracy();
+
+// Check accuracy values
+print(accuracy1,'5-fold Validation for first classification: accuracy 1');
+print(accuracy2,'.. accuracy 2');
+print(accuracy3,'.. accuracy 3');
+print(accuracy4,'.. accuracy 4');
+print(accuracy5,'.. accuracy 5');
+
+// Obtain classification results
+var validation= validation1;
+var classified = stack.clip(roi).select(bands).classify(trainingClassifier1);
+
+// The color palette for displaying classification map
+var palette = [
+  'FF0000', // urban (0)  // red
+  '008000', //  forest (1) //dark green
+  '0000FF', // water (2)  // blue
+  '975700', // barren (3) // brown
+  'FFD7A1' // field (4) beige
+];
+
+  // Display the classification result and the input image.
+Map.addLayer(classified.updateMask(mask), {min: 0, max: 4, opacity: 0.8, palette: palette}, 
+'Land Use Classification');
+
+//########################################
+//                                      //
+//        ACCURACY ASSESSMENT 1        //
+//                                      //
+//########################################
+//
+// Get training and testring accuracy as well as a confusion matrix to investigate performance for each land use class.
+
+// Training Accuracy
+var trainAccuracy = trainingClassifier1.confusionMatrix();
+print('1st classification - Training Accuracy: Resubstitution error matrix', trainAccuracy);
+print('1st classification - Training overall accuracy: ', trainAccuracy.accuracy());
+
+// Classify the validation data.
+var validated = validation.classify(trainingClassifier1);
+
+// Get Testing Accuracy
+var testAccuracy = validated.errorMatrix('landcover', 'classification');
+print('1st classification - Validation error matrix: ', testAccuracy);
+print('1st classification - Validation overall accuracy: ', testAccuracy.accuracy());
+
+// Accuracy for each land use class
+
+// Consumer Accuracy: Represents the probability that a pixel classified into a given category actually represents that category on the ground.
+var consumersAccuracy = testAccuracy.consumersAccuracy();
+print(consumersAccuracy,'1st classification - Comsumers Accuracy');
+
+// Producer Accuracy: This value represents how well reference pixels of the ground cover type are classified
+var producersAccuracy = testAccuracy.producersAccuracy();
+print(producersAccuracy,'1st classification - Producers Accuracy');
+
+// #### Add Legends to Classification Map ####
+// Customized Legend
+
+// FOR LAND USE CLASSIFICATION
+// set position of panel
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-right',
+    padding: '8px 15px'
+  }
+});
+ 
+// Create legend title
+var legendTitle = ui.Label({
+  value: 'Land Use Classification',
+  style: {
+    fontWeight: 'bold',
+    fontSize: '16px',
+    margin: '0 0 4px 0',
+    padding: '0'
+    }
+});
+ 
+// Add the title to the panel
+legend.add(legendTitle);
+ 
+// Creates and styles 1 row of the legend.
+var makeRow = function(color, name) {
+ 
+      // Create the label that is actually the colored box.
+      var colorBox = ui.Label({
+        style: {
+          backgroundColor: '#' + color,
+          // Use padding to give the box height and width.
+          padding: '8px',
+          margin: '0 0 4px 0'
+        }
+      });
+ 
+      // Create the label filled with the description text.
+      var description = ui.Label({
+        value: name,
+        style: {margin: '0 0 4px 6px'}
+      });
+ 
+      // return the panel
+      return ui.Panel({
+        widgets: [colorBox, description],
+        layout: ui.Panel.Layout.Flow('horizontal')
+      });
+};
+ 
+//  Palette with the colors
+var classificationPalette = [
+  'FF0000', // urban (0)  // red
+  '008000', //  forest (1) //dark green
+  '0000FF', // water (2)  // blue
+  '975700', // barren (3) // brown
+  'FFD7A1' // field (4) beige
+];
+
+// name of the legend
+var classNames = ['Urban','Forest','Water','Barren','Agriculture'];
+
+// Add color and and names
+for (var i = 0; i < 5; i++) {
+  legend.add(makeRow(classificationPalette[i], classNames[i]));
+} 
+
+// add legend to map (alternatively you can also print the legend to the console)
+Map.add(legend);
+
+// #### BARREN MASK ####
+// It is assumed that barren land is the potential locations for open dumping sites. As a reuslt,
+// it is masked from the classification map for the second classification, dividing barren land further into
+// dumping sites and non-dumping sites.
+
+var barren_mask = classified.eq(3); // create a mask for barren land which has a landuse class of 3.
+var potentialSites = classified.mask(barren_mask); // mask the barren land
+// Have a look of the barren land
+Map.addLayer(potentialSites,{opacity: 0.8, palette: ['FFC300']},'Barren Land: Potential Sites for illegal dumping'); // display the potential sites
+
+var ch4_vis_2 = {min: 0, max: 2, palette: ['343A40','7952B3','FFC107','E1E8EB']}; // visual parameters for SBMP
+Map.addLayer(SBMP.mask(barren_mask),ch4_vis_2,'CH4 proxy at Potential Sites'); // check methane proxy at the potential sites
+
+//#### Display Landsat 8 LST ####
+
+  //Visualization parameters for LST
+var Vis = {
+  min: 296,
+  max: 299,
+  palette: ['ffffff','ffc63a','ff0051','33270b'],
+  opacity: 0.6
+};
+
+// check LST at the potential sites as well by masking out other areas on the island
+var lst_focus = annual.first().mask(barren_mask); //Get the first layer of land surface temperature
+Map.addLayer(lst_focus.updateMask(mask), Vis, 'L8_ThermalBand'); // display LST data
+
+// FOR METHANE PROxY COLOR SCALE
+
+// Creates a color bar thumbnail image for use in legend from the given color palette.
+
+function makeColorBarParams(palette) {
+  return {
+    bbox: [0, 0, 1, 0.1],
+    dimensions: '100x10',
+    format: 'png',
+    min: 0,
+    max: 1,
+    palette: palette,
+  };
+}
+
+// Color Palette
+var SBMP_focus_vis = {palette: ['eae2b7','fcbf49','f77f00','d62828'], min: 0, max: 4};
+var MBSP_focus_vis = {palette: ['yellow','aqua','teal'], min: -50, max: -30};
+
+// Create the color bar for the legend.
+var colorBarMBSP = ui.Thumbnail({
+  image: ee.Image.pixelLonLat().select(0),
+  params: makeColorBarParams(MBSP_focus_vis.palette),
+  style: {stretch: 'horizontal', margin: '0px 8px', maxHeight: '24px',
+  position: 'middle-left', padding: '8px 15px'
+  },
+});
+
+var colorBarSBMP = ui.Thumbnail({
+  image: ee.Image.pixelLonLat().select(0),
+  params: makeColorBarParams(SBMP_focus_vis.palette),
+  style: {stretch: 'horizontal', margin: '0px 8px', maxHeight: '24px',
+  position: 'middle-left', padding: '8px 15px'
+  },
+});
+
+// Create a panel with three numbers for the legend.
+var legendLabelsMBSP = ui.Panel({
+  widgets: [
+    ui.Label(MBSP_focus_vis.min, {margin: '4px 8px'}),
+    ui.Label(
+        (MBSP_focus_vis.max / 2),
+        {margin: '4px 8px', textAlign: 'center', stretch: 'horizontal'}),
+    ui.Label(MBSP_focus_vis.max, {margin: '4px 8px'})
+  ],
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+
+var legendLabelsSBMP = ui.Panel({
+  widgets: [
+    ui.Label(SBMP_focus_vis.min, {margin: '4px 8px'}),
+    ui.Label(
+        (SBMP_focus_vis.max / 2),
+        {margin: '4px 8px', textAlign: 'center', stretch: 'horizontal'}),
+    ui.Label(SBMP_focus_vis.max, {margin: '4px 8px'})
+  ],
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+
+var legendTitleMBSP = ui.Label({
+  value: 'MBSP Methane Proxy',
+  style: {fontWeight: 'bold'}
+});
+
+var legendTitleSBMP = ui.Label({
+  value: 'SBMP Methane Proxy',
+  style: {fontWeight: 'bold'}
+});
+
+// Land Surface Temperature Legend
+// Create the color bar for the legend.
+var colorBarMBSP = ui.Thumbnail({
+  image: ee.Image.pixelLonLat().select(0),
+  params: makeColorBarParams(MBSP_focus_vis.palette),
+  style: {stretch: 'horizontal', margin: '0px 8px', maxHeight: '24px',
+  position: 'middle-left', padding: '8px 15px'
+  },
+});
+
+var colorBarSBMP = ui.Thumbnail({
+  image: ee.Image.pixelLonLat().select(0),
+  params: makeColorBarParams(SBMP_focus_vis.palette),
+  style: {stretch: 'horizontal', margin: '0px 8px', maxHeight: '24px',
+  position: 'middle-left', padding: '8px 15px'
+  },
+});
+
+var colorBarLST = ui.Thumbnail({
+  image: ee.Image.pixelLonLat().select(0),
+  params: makeColorBarParams(Vis.palette),
+  style: {stretch: 'horizontal', margin: '0px 8px', maxHeight: '24px',
+  position: 'middle-left', padding: '8px 15px'
+  },
+});
+
+// Create a panel with three numbers for the legend.
+
+var legendLabelsLST = ui.Panel({
+  widgets: [
+    ui.Label(Vis.min, {margin: '4px 8px'}),
+    ui.Label(
+        (Vis.max / 2),
+        {margin: '4px 8px', textAlign: 'center', stretch: 'horizontal'}),
+    ui.Label(Vis.max, {margin: '4px 8px'})
+  ],
+  layout: ui.Panel.Layout.flow('horizontal')
+});
+
+var legendTitleLST = ui.Label({
+  value: 'Land Surface Temperature',
+  style: {fontWeight: 'bold'}
+});
+
+
+// Add the legendPanel to the map.
+var legendPanelMBSP = ui.Panel([legendTitleMBSP, colorBarMBSP, legendLabelsMBSP]);
+var legendPanelSBMP = ui.Panel([legendTitleSBMP, colorBarSBMP, legendLabelsSBMP]);
+var legendPanelLST = ui.Panel([legendTitleLST, colorBarLST, legendLabelsLST]);
+
+Map.add(legendPanelMBSP);
+Map.add(legendPanelSBMP);
+Map.add(legendPanelLST);
+
+//####################################################
+//############### Second Classification ##############
+//####################################################
+//
+// In the second classification, barren land are extracted for another classificaton to distinguish 
+// dumping sites from non-dumping sites. Field data are used as training data.
+
+var newluc_2 = barren_binary.merge(openDumpsites); // merge the two land use classes
+
+  // Sample the input imagery to get a FeatureCollection of training data.
+var training_2 = stack.mask(barren_mask).sampleRegions({
+  collection: newluc_2,
+  properties: ['landcover'],
+  scale: 30
+});
+
+  // Training - Testing Data Split
+training_2 = training_2.randomColumn();
+var split = 0.7;  // Assign 70% for training data and 30% for testing data
+var training_subset_2 = training_2.filter(ee.Filter.lt('random', split));
+print(training_subset_2.size(),'Size of training subset');
+
+var validation_2 = training_2.filter(ee.Filter.gte('random', split));
+
+  // Spatial join.
+var distFilter = ee.Filter.withinDistance({
+  distance: 1000,
+  leftField: '.geo',
+  rightField: '.geo',
+  maxError: 10
+});
+
+var join = ee.Join.inverted();
+
+  // Apply the join.
+training_subset_2 = join.apply(training_subset_2, validation_2, distFilter);
+
+// #### Spectral Bands for the second classification ####
+// This time, different bands are used to train the classification, with focus on NDVI, LSWI, methane and LST,
+// which from the existing literature have been used to specifically distinguish open dumping sites.
+
+// Included spectral bands
+var bands2 = [
+  'NDVI_mean','LSWI',
+  'NDVI_winter','NDVI_spring','NDVI_summer','NDVI_fall','NDVI_max','NDVI_min',
+  'MBSP','SBMP','LST'
+  ];
+
+  // Make a classifier and train it.
+var classifier_binary = ee.Classifier.smileRandomForest(30).train({
+  features: training_subset_2,
+  classProperty: 'landcover',
+  inputProperties: bands2
+});
+
+  // Classify the input imagery.
+var classified_binary = stack.clip(roi).select(bands2).classify(classifier_binary);
+
+// Color palette for distinguishing open dumping sites from non-dumping sites
+var palette2 = [
+  'FFD7A1', // non-dumpsites (10)  // beige
+  'FF0000' // dumpsites (20) red
+];
+
+  // Display the classification result and the input image.
+Map.addLayer(classified_binary.updateMask(mask).updateMask(barren_mask), {min: 10, max: 20, opacity: 0.8, palette: palette2}, 
+'Second Binary Classification');
+
+//########################################
+//                                      //
+//        ACCURACY ASSESSMENT 2         //
+//                                      //
+//########################################
+//
+// Accuracy assessment for the second supervised classification. 
+
+// Training Accuracy
+var trainAccuracy = classifier_binary.confusionMatrix();
+print('2nd classification - Resubstitution error matrix: ', trainAccuracy);
+print('2nd classification - Training overall accuracy: ', trainAccuracy.accuracy());
+
+
+//Classify the validation data.
+var validated = validation.classify(classifier_binary);
+
+// Get the Testing Accuracy
+var testAccuracy = validated.errorMatrix('landcover', 'classification');
+print('2nd classification - Validation error matrix: ', testAccuracy);
+print('2nd classification - Validation overall accuracy: ', testAccuracy.accuracy());
+
+// Dumpsites Mask
+// Detected dumping sites from the second classification
+var ds_mask = classified_binary.eq(20); // create a mask for dumping sites
+// Dumpsites from the second classiifcation, also masked out the ocean and other land use class.
+var Dumpingsites = classified_binary.updateMask(mask).updateMask(barren_mask).updateMask(ds_mask);
+
+// Preview the results
+Map.addLayer(Dumpingsites,{opacity: 0.8, palette: ['FFC300']},'Detected Dumping Sites for illegal dumping');
+
+// As there are quite some noise from the classification, it might help if the small patches are masked as well,
+// which require an object-based method to count the size of every classified objects.
+
+// #### Fitering Dumping sites by size with Object-based method ####
+// To reduce noise from the classification, a filter is used to get rid of pixels with smalll size.
+// First, neighbouring pixels are connected, their sizes are calculated and a threshold is applied.
+
+    // Uniquely label the image objects
+var objectId = ds_mask.connectedComponents({
+  connectedness: ee.Kernel.plus(1),
+  maxSize: 240
+}).updateMask(mask).updateMask(barren_mask).updateMask(ds_mask);
+
+    // Display the uniquely ID'ed objects with unique colors to the Map
+Map.addLayer(objectId.randomVisualizer(), {}, 'Sites_ID');
+
+    // Compute the number of pixels in each object defined by the "labels" band
+var objectSize = objectId.select('labels')
+  .connectedPixelCount({
+    maxSize: 240, eightConnected: false
+  });
+
+    // Get a pixel area image.
+var pixelArea = ee.Image.pixelArea();
+
+  // Multiply pixel area by the number of pixels in an object to calculate
+  // the object area. The result is an image where each pixel
+  // of an object relates the area of the object in m^2.
+var objectArea = objectSize.multiply(pixelArea);
+
+  // Threshold the `objectArea` image to define a mask that will mask out
+  // objects below a given size.
+var areaMask = objectArea.gte(300); // mask out objects smaller than 300 m2
+
+  // Update the mask of the `objectId` layer defined previously using the
+  // minimum area mask just defined.
+objectId = objectId.updateMask(areaMask);
+Map.addLayer(objectId, {}, 'Filtered Sites'); // display filtered results
+
+//########################################
+//                                      //
+//        DESCRIPTIVE STATISTICS        //
+//                                      //
+//########################################
+//
+// After visual inspection using histogram, some descriptive statistics are also calculated to find out the mean value
+// of methane proxy at the dumping sites.
+
+// Dumpsites Statistics
+
+// Add land use class into the classified image
+var luc = ee.Image(classified).select('classification');
+print(MBSP);
+
+// Add classification results into the image stack
+var MBSP_stat = MBSP.addBands(luc);
+print(MBSP_stat);
+
+// Get the CH4 mean for all the ground truth dumping sites
+var MBSP_dumpsites = MBSP_stat.reduceRegion({
+  reducer: ee.Reducer.mean(),
+  geometry: groundData,
+  scale: 10,
+  maxPixels: 1e8,
+  bestEffort: true
+});
+
+print('CH4 mean for field data: ', MBSP_dumpsites);
+
+// Grouped a mean reducer for noy only the dumping sites, 
+// but every land use class for better comparison.
+var MBSP_means = MBSP_stat.reduceRegion({
+  reducer: ee.Reducer.mean().group({
+    groupField: 1,
+    groupName: 'landcoverClass',
+  }),
+  geometry: roi,
+  scale: 100,
+  maxPixels: 1e8,
+  bestEffort: true
+});
+
+print('CH4 mean for each land class: ', MBSP_means);
+
+//########################################
+//                                      //
+//       Methane Proxy Time Series      //
+//                                      //
+//########################################
+
+// Write a Function to calculate and add an SBMP band
+// Note: 1120.7647 is the reference value inspected from inland forest which represent no CH4 emission.
+var addSBMP = function(image) {
+return image.addBands(image.select(['B12']).subtract(1120.7647).divide(1120.7647).rename('SBMP'));
+};
+
+// Add SBMP band to image collection using map()
+var s2 = s2.map(addSBMP);
+
+// Extract SBMP band
+var SBMP_col = s2.select(['SBMP']); // SBMP image collection
+
+// The list of features from urban class, barren class and dumpsites class
+var ens = [
+ee.Feature(urban_geometry, {name: 'urban'}),
+ee.Feature(barren_geometry, {name: 'barren'}),
+ee.Feature(dumpsite_geometry, {name: 'dumpsite'})
+];
+// Combine them into a feature collection
+var col = ee.FeatureCollection(ens);
+
+//Create a graph of the time-series.
+var graph = ui.Chart.image.seriesByRegion({
+imageCollection: s2, // Sentinel 2 image collection
+regions: col, // to the feature collection
+reducer: ee.Reducer.mean(), // method of mean
+scale: 30,
+})
+.setSeriesNames(['Urban', 'Barren', 'Dumpsite'])
+.setOptions({
+          title: 'Average SBMP by Date',
+          hAxis: {title: 'Date', titleTextStyle: {italic: false, bold: true}},
+          vAxis: {
+            title: 'SBMP Time Series',
+            titleTextStyle: {italic: false, bold: true}
+          },
+          lineWidth: 1.5,
+          colors: ['red', 'orange', 'purple'],
+        }); // layout options for the figure
+
+print(graph); // display time series chart
+
+// Turn off some of the layers on the map to decrease loading time when running the script
+Map.layers().get(0).setShown(0); // Get the displayed layer and set to off (0)
+Map.layers().get(1).setShown(0);
+Map.layers().get(2).setShown(0);
+Map.layers().get(3).setShown(0);
+Map.layers().get(4).setShown(0);
+Map.layers().get(5).setShown(0);
+Map.layers().get(6).setShown(0);
+Map.layers().get(7).setShown(0);
+Map.layers().get(8).setShown(0);
+Map.layers().get(9).setShown(0);
+Map.layers().get(12).setShown(0);
+Map.layers().get(13).setShown(0);
+Map.layers().get(14).setShown(0);
+Map.layers().get(16).setShown(0);
+
+//===========================================================================================
+// NOTE: 
+// COMMENTING THE LINES BELOW CAN DEACTIVATE THE USER INTERFACE OF GOOGLE EARTH ENGINE
+// APP AND ENABLE THE ORIGINAL MAP INTERFACE.
+//===========================================================================================
+
+//########################################
+//                                      //
+//        GOOGLE EARTH ENGINE APP       //
+//                                      //
+//########################################
+//
+// To improve the visulization of the classification results, a Google Earth Engine App with a user interface 
+// is implemented so that users can access the outcome easily. A split map, for example, is applied to the user interface.
+
+// User Interface
+
+// Reset the Map Panel
+Map.clear();
+
+// Make another map and add a color-NIR composite to it.
+var linkedMap = ui.Map();
+
+// Add Classification Map
+linkedMap.addLayer(classified.updateMask(mask), {min: 0, max: 4, opacity: 0.8, palette: palette}, 
+'Land Use Classification');
+
+// Mask barren
+var barren_mask = classified.eq(3); // create a mask for crops
+
+// MBSP: Methane proxy masked with barren land
+var MBSP_focus = MBSP.mask(barren_mask); // mask it
+linkedMap.addLayer(MBSP_focus.updateMask(mask), MBSP_focus_vis,'MBSP at Potential Sites');
+
+// SBMP: Methane proxy masked with barren land
+var SBMP_focus = SBMP.mask(barren_mask); // mask it
+linkedMap.addLayer(SBMP_focus.updateMask(mask), SBMP_focus_vis,'SBMP at Potential Sites');
+
+// Land Surface Temperature
+var lst_focus = annual.first().mask(barren_mask); // mask it
+linkedMap.addLayer(lst_focus.updateMask(mask), Vis, 'Land Surface Temperature');
+
+// Detected non-dumping ground Barren Land
+linkedMap.addLayer(classified_binary.updateMask(mask).updateMask(barren_mask), {palette: "yellow"}, 
+'Bare Ground');
+
+// Detected Dumping Ground
+linkedMap.addLayer(objectId, {}, 'Detected Dumping Ground'); // display detected dumping ground
+
+// Add Legend.
+linkedMap.add(legendPanelMBSP);
+linkedMap.add(legendPanelSBMP);
+linkedMap.add(legendPanelLST);
+linkedMap.add(legend);
+
+// Link the default Map to the other map.
+var linker = ui.Map.Linker([ui.root.widgets().get(0), linkedMap]);
+
+// Create a SplitPanel which holds the linked maps side-by-side.
+var splitPanel = ui.SplitPanel({
+  firstPanel: linker.get(0),
+  secondPanel: linker.get(1),
+  orientation: 'horizontal',
+  wipe: true,
+  style: {stretch: 'both'}
+});
+
+// Set the SplitPanel as the only panel in root.
+ui.root.widgets().reset([splitPanel]);
+Map.setCenter(103.934,10.283, 13);
+Map.setOptions('SATELLITE');
+linkedMap.setOptions('SATELLITE');
+
+// #################### END OF THE SCRIPT #################
