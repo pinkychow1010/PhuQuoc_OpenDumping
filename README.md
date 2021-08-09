@@ -1,6 +1,12 @@
 # PhuQuoc_OpenDumping
 A Google Earth Engine script for Dumping Site Detection on Phu Quoc Island, Vietnam Using Sentinel 2
 
+## Google Earth Engine script
+The script can be view in [Google Earth Engine](https://code.earthengine.google.com/9f9b752bc3edaf8bccbea35636428903).
+
+## Google Earth Engine app
+The script is being used for a published Google Earth Engine app, which can be accessed via [this link](https://pinkychow1010.users.earthengine.app/view/phuquocopendumping).
+
 ## Objective:
 
 This Google Earth Engine script aims to detect open dumping sites on Phu Quoc Island, Vietnam to analysis 
@@ -15,15 +21,9 @@ their methane emission and potential leaching impacts.
  
 This script have fulfilled several task: First, it use the ground truth data to detect dumping sites
 after visual inspection and preprocessing of the data. The classification is two-fold:
-First, it use the spectral bands, as well as Tasseled Cap Analysis to classify different land use surface, with barren land assigned 
-as potential sites for illegal dumping. Secondly, the barren land is further processed with another
-binary classification into dumping sites and non-dumping sites. Instead of spectral bands, it uses 
-indices such as NDVI, methane proxy and land surface temperature which is revealed as useful indices
-in the existig literature. The methane proxy can be divided into Multi-band–single-pass (MBSP) retrieval
-and adapted Single-band–multi-pass (SBMP) retrieval, which are proposaled in recent literature to 
-estimate methane emission using band 11 and 12 of the Sentinel-2 data. Both results are compared.
-Finally, a time series analysis of methane proxy at the dumping sits is implemented, to investigate
-the temporal patterns of methane emission compared to other land use class.
+First, it use the spectral bands, as well as Tasseled Cap Analysis to classify different land use surface, with barren land assigned as potential sites for illegal dumping. Secondly, the barren land is further processed with another binary classification into dumping sites and non-dumping sites. 
+
+Instead of spectral bands, it uses indices such as NDVI, methane proxy and land surface temperature which is revealed as useful indices in the existig literature. The methane proxy can be divided into Multi-band–single-pass (MBSP) retrieval and adapted Single-band–multi-pass (SBMP) retrieval, which are proposaled in recent literature to estimate methane emission using band 11 and 12 of the Sentinel-2 data. Both results are compared. Finally, a time series analysis of methane proxy at the dumping sits is implemented, to investigate the temporal patterns of methane emission compared to other land use class.
 
 ## Results:
  
